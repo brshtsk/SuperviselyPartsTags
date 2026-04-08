@@ -1,0 +1,6 @@
+supervisely
+torch
+torchvision
+Pillow
+requests
+
