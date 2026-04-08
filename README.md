@@ -1,5 +1,7 @@
 # Supervisely app: car parts side tagging
 
+![logo-ml.png](https://raw.githubusercontent.com/brshtsk/SuperviselyPartsTags/main/img/logo-ml.png)
+
 Приложение автоматически проставляет object-level теги стороны (`side`) для парных деталей,
 используя image-level тег ракурса автомобиля (`view`) и детерминированные правила.
 

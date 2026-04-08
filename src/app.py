@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import supervisely as sly
 import uvicorn
@@ -34,7 +34,7 @@ eta_text = Text("", status="text")
 progress = Progress() if Progress is not None else None
 
 
-result_widgets: list[Any] = [status_text, summary_text, progress_text, eta_text]
+result_widgets: List[Any] = [status_text, summary_text, progress_text, eta_text]
 if progress is not None:
     result_widgets.append(progress)
 
