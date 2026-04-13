@@ -2,7 +2,6 @@ import os
 from typing import Any, Dict, List, Optional
 
 import supervisely as sly
-import uvicorn
 from supervisely.app.widgets import Button, Card, Checkbox, Container, Field, Input, InputNumber, Text
 
 try:
@@ -10,7 +9,10 @@ try:
 except Exception:
     Progress = None
 
-from main import assign_side_tags_run
+try:
+    from .main import assign_side_tags_run
+except ImportError:
+    from main import assign_side_tags_run
 
 
 image_id_input = Input(value="", placeholder="e.g. 12345")
@@ -50,6 +52,7 @@ controls = Card(
 results = Card(title="Status & Summary", content=Container(result_widgets))
 layout = Container([controls, results])
 app = sly.Application(layout=layout)
+server = app.get_server()
 
 
 def _parse_optional_positive_int(value: Any, field_name: str) -> Optional[int]:
@@ -195,8 +198,10 @@ def run_assignment() -> None:
 
 
 if __name__ == "__main__":
+    import uvicorn
+
     sly.logger.info("Starting Supervisely app: Car Parts Side Tagger")
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run(app.get_server(), host=host, port=port, log_level="info")
+    uvicorn.run(server, host=host, port=port, log_level="info")
 
