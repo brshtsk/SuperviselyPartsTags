@@ -134,7 +134,14 @@ def _build_tag_meta(name: str, value_type: sly.TagValueType, possible_values: Op
         kwargs["possible_values"] = possible_values
 
     if hasattr(sly, "TagApplicableTo"):
-        kwargs["applicable_to"] = sly.TagApplicableTo.OBJECTS
+        tag_applicable_to = sly.TagApplicableTo
+        applicable_to = (
+            getattr(tag_applicable_to, "OBJECTS", None)
+            or getattr(tag_applicable_to, "OBJECTS_ONLY", None)
+            or getattr(tag_applicable_to, "ALL", None)
+        )
+        if applicable_to is not None:
+            kwargs["applicable_to"] = applicable_to
 
     try:
         return sly.TagMeta(name=name, value_type=value_type, **kwargs)
