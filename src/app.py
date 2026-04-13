@@ -16,13 +16,8 @@ from main import assign_side_tags_run
 image_id_input = Input(value="", placeholder="e.g. 12345")
 dataset_id_input = Input(value="", placeholder="e.g. 67890 (optional)")
 
-use_existing_view_tag_checkbox = Checkbox(content="Use existing image view tag", checked=True)
-overwrite_side_checkbox = Checkbox(content="Overwrite existing side tags", checked=False)
 dry_run_checkbox = Checkbox(content="Dry run (do not upload annotation)", checked=True)
 
-top_k_input = InputNumber(min=1, max=9, step=1, value=3)
-img_size_input = InputNumber(min=64, max=1024, step=32, value=224)
-device_input = Input(value="auto", placeholder="auto | cpu | cuda | mps")
 pair_ratio_input = InputNumber(min=1.0, max=5.0, step=0.05, value=1.15)
 
 assign_button = Button("Assign side tags", button_type="primary")
@@ -45,12 +40,7 @@ controls = Card(
         [
             Field(content=image_id_input, title="Image ID"),
             Field(content=dataset_id_input, title="Dataset ID"),
-            Field(content=use_existing_view_tag_checkbox, title="use_existing_view_tag"),
-            Field(content=top_k_input, title="top_k (classifier mode)"),
-            Field(content=img_size_input, title="img_size (classifier mode)"),
-            Field(content=device_input, title="device (classifier mode)"),
             Field(content=pair_ratio_input, title="pair_size_ratio_threshold"),
-            Field(content=overwrite_side_checkbox, title="overwrite_existing_side_tags"),
             Field(content=dry_run_checkbox, title="dry_run"),
             assign_button,
         ]
@@ -151,13 +141,8 @@ def run_assignment() -> None:
         status_text.set("Error: provide exactly one field: Image ID or Dataset ID", status="error")
         return
 
-    use_existing_view_tag = bool(use_existing_view_tag_checkbox.is_checked())
-    overwrite_existing = bool(overwrite_side_checkbox.is_checked())
     dry_run = bool(dry_run_checkbox.is_checked())
 
-    top_k = int(top_k_input.get_value())
-    img_size = int(img_size_input.get_value())
-    device = str(device_input.get_value()).strip() or "auto"
     pair_ratio = float(pair_ratio_input.get_value())
 
     status_text.set("Assigning side tags...", status="text")
@@ -186,12 +171,7 @@ def run_assignment() -> None:
         result = assign_side_tags_run(
             image_id=image_id,
             dataset_id=dataset_id,
-            use_existing_view_tag=use_existing_view_tag,
-            overwrite_existing_side_tags=overwrite_existing,
             dry_run=dry_run,
-            top_k=top_k,
-            img_size=img_size,
-            device=device,
             pair_size_ratio_threshold=pair_ratio,
             progress_cb=_on_progress,
         )

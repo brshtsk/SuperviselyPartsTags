@@ -1,10 +1,6 @@
 import argparse
-import importlib.util
-import os
-import tempfile
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import supervisely as sly
@@ -249,46 +245,6 @@ def _find_existing_view(ann: sly.Annotation, view_tag_candidates: List[str]) -> 
             return normalized_view, tag.meta.name
 
     return None, None
-
-
-def _load_classifier_modules() -> Tuple[Any, Any]:
-    base = Path(__file__).resolve().parents[2] / "SuperviselyPerspective" / "src"
-    infer_path = base / "infer_perspective.py"
-    store_path = base / "model_store.py"
-
-    if not infer_path.exists() or not store_path.exists():
-        raise RuntimeError("Car view classifier module was not found in ../SuperviselyPerspective/src")
-
-    infer_spec = importlib.util.spec_from_file_location("infer_perspective", infer_path)
-    store_spec = importlib.util.spec_from_file_location("model_store", store_path)
-    if infer_spec is None or infer_spec.loader is None or store_spec is None or store_spec.loader is None:
-        raise RuntimeError("Unable to load car view classifier modules")
-
-    infer_module = importlib.util.module_from_spec(infer_spec)
-    store_module = importlib.util.module_from_spec(store_spec)
-    infer_spec.loader.exec_module(infer_module)
-    store_spec.loader.exec_module(store_module)
-    return infer_module, store_module
-
-
-def build_view_predictor(device_arg: str = "auto", img_size: int = 224, top_k: int = 3) -> Callable[[str], Dict[str, Any]]:
-    infer, store = _load_classifier_modules()
-
-    model_url = getattr(store, "DEFAULT_MODEL_URL")
-    model_path = store.ensure_model_downloaded(model_url=model_url)
-    device = infer.get_device(device_arg)
-    model = infer.load_model(model_path=model_path, device=device)
-
-    def _predictor(image_path: str) -> Dict[str, Any]:
-        return infer.predict_from_image_path(
-            image_path=image_path,
-            model=model,
-            img_size=img_size,
-            device=device,
-            top_k=top_k,
-        )
-
-    return _predictor
 
 
 def _decisions_by_area_dominance(
@@ -586,15 +542,9 @@ def _format_image_summary(summary: Dict[str, Any]) -> str:
 def assign_side_tags_to_image(
     api: sly.Api,
     image_id: int,
-    use_existing_view_tag: bool,
-    overwrite_existing_side_tags: bool,
     dry_run: bool,
-    top_k: int,
-    img_size: int,
-    device: str,
     pair_size_ratio_threshold: float,
     view_tag_candidates: Optional[List[str]] = None,
-    predictor: Optional[Callable[[str], Dict[str, Any]]] = None,
     project_meta: Optional[sly.ProjectMeta] = None,
     side_tag_metas: Optional[Dict[str, sly.TagMeta]] = None,
 ) -> Dict[str, Any]:
@@ -613,22 +563,8 @@ def assign_side_tags_to_image(
     ann = sly.Annotation.from_json(ann_json, project_meta)
 
     view_candidates = view_tag_candidates or DEFAULT_VIEW_TAG_CANDIDATES
-    view: Optional[str] = None
-    view_source = "missing"
-
-    if use_existing_view_tag:
-        view, used_tag_name = _find_existing_view(ann=ann, view_tag_candidates=view_candidates)
-        if view is not None:
-            view_source = f"existing tag ({used_tag_name})"
-    else:
-        if predictor is None:
-            predictor = build_view_predictor(device_arg=device, img_size=img_size, top_k=top_k)
-        with tempfile.TemporaryDirectory(prefix="sly_side_single_") as temp_dir:
-            local_path = os.path.join(temp_dir, f"{image_info.id}_{image_info.name}")
-            api.image.download_path(image_id, local_path)
-            prediction = predictor(local_path)
-        view = normalize_view_name(str(prediction.get("predicted_class")))
-        view_source = "classifier"
+    view, used_tag_name = _find_existing_view(ann=ann, view_tag_candidates=view_candidates)
+    view_source = f"existing tag ({used_tag_name})" if view is not None else "missing"
 
     decisions = assign_side_decisions(
         labels=list(ann.labels),
@@ -660,7 +596,7 @@ def assign_side_tags_to_image(
                 existing_tags=label.tags,
                 metas=side_tag_metas,
                 decision=decision,
-                overwrite=overwrite_existing_side_tags,
+                overwrite=False,
             )
 
             if skipped:
@@ -731,12 +667,7 @@ def assign_side_tags_to_image(
 
 def assign_side_tags_to_dataset(
     dataset_id: int,
-    use_existing_view_tag: bool,
-    overwrite_existing_side_tags: bool,
     dry_run: bool,
-    top_k: int,
-    img_size: int,
-    device: str,
     pair_size_ratio_threshold: float,
     view_tag_candidates: Optional[List[str]] = None,
     progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
@@ -749,10 +680,6 @@ def assign_side_tags_to_dataset(
 
     project_meta, side_tag_metas = ensure_side_tag_metas(api=api, project_id=dataset_info.project_id)
     images = api.image.get_list(dataset_id)
-
-    predictor = None
-    if not use_existing_view_tag:
-        predictor = build_view_predictor(device_arg=device, img_size=img_size, top_k=top_k)
 
     started = time.monotonic()
 
@@ -790,15 +717,9 @@ def assign_side_tags_to_dataset(
             result = assign_side_tags_to_image(
                 api=api,
                 image_id=image_info.id,
-                use_existing_view_tag=use_existing_view_tag,
-                overwrite_existing_side_tags=overwrite_existing_side_tags,
                 dry_run=dry_run,
-                top_k=top_k,
-                img_size=img_size,
-                device=device,
                 pair_size_ratio_threshold=pair_size_ratio_threshold,
                 view_tag_candidates=view_tag_candidates,
-                predictor=predictor,
                 project_meta=project_meta,
                 side_tag_metas=side_tag_metas,
             )
@@ -855,12 +776,7 @@ def assign_side_tags_to_dataset(
 def assign_side_tags_run(
     image_id: Optional[int],
     dataset_id: Optional[int],
-    use_existing_view_tag: bool,
-    overwrite_existing_side_tags: bool,
     dry_run: bool,
-    top_k: int,
-    img_size: int,
-    device: str,
     pair_size_ratio_threshold: float,
     view_tag_candidates: Optional[List[str]] = None,
     progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
@@ -873,12 +789,7 @@ def assign_side_tags_run(
             "mode": "dataset",
             **assign_side_tags_to_dataset(
                 dataset_id=dataset_id,
-                use_existing_view_tag=use_existing_view_tag,
-                overwrite_existing_side_tags=overwrite_existing_side_tags,
                 dry_run=dry_run,
-                top_k=top_k,
-                img_size=img_size,
-                device=device,
                 pair_size_ratio_threshold=pair_size_ratio_threshold,
                 view_tag_candidates=view_tag_candidates,
                 progress_cb=progress_cb,
@@ -889,12 +800,7 @@ def assign_side_tags_run(
     image_summary = assign_side_tags_to_image(
         api=api,
         image_id=int(image_id),
-        use_existing_view_tag=use_existing_view_tag,
-        overwrite_existing_side_tags=overwrite_existing_side_tags,
         dry_run=dry_run,
-        top_k=top_k,
-        img_size=img_size,
-        device=device,
         pair_size_ratio_threshold=pair_size_ratio_threshold,
         view_tag_candidates=view_tag_candidates,
     )
@@ -905,12 +811,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Assign side tags to pair car parts in Supervisely")
     parser.add_argument("--image-id", type=int, help="Supervisely image id")
     parser.add_argument("--dataset-id", type=int, help="Supervisely dataset id")
-    parser.add_argument("--use-existing-view-tag", action="store_true", help="Use existing image tag 'view' / 'car_view'")
-    parser.add_argument("--overwrite-existing-side-tags", action="store_true", help="Replace existing side-related object tags")
     parser.add_argument("--dry-run", action="store_true", help="Do not upload annotation updates")
-    parser.add_argument("--top-k", type=int, default=3)
-    parser.add_argument("--img-size", type=int, default=224)
-    parser.add_argument("--device", default="auto")
     parser.add_argument("--pair-size-ratio-threshold", type=float, default=1.15)
     return parser.parse_args()
 
@@ -920,12 +821,7 @@ def main() -> None:
     result = assign_side_tags_run(
         image_id=args.image_id,
         dataset_id=args.dataset_id,
-        use_existing_view_tag=bool(args.use_existing_view_tag),
-        overwrite_existing_side_tags=bool(args.overwrite_existing_side_tags),
         dry_run=bool(args.dry_run),
-        top_k=int(args.top_k),
-        img_size=int(args.img_size),
-        device=str(args.device),
         pair_size_ratio_threshold=float(args.pair_size_ratio_threshold),
     )
     print(result)
