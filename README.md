@@ -77,3 +77,9 @@
 
 ![part-tag.png](img/part-tag.png)
 
+### Сегменты с тэгом `needs review`
+
+Скрипт проставляет тэг `needs review` в краевых случаях. Например, если у авто 3 сегмента Headlight
+
+![needs-review.png](img/needs-review.png)
+
